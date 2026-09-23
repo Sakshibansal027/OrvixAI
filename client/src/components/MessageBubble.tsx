@@ -15,13 +15,13 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         <div className={`mt-1.5 rounded-2xl px-4 py-3 text-sm leading-6 shadow-bubble ${isCustomer ? 'rounded-br-md bg-ink text-white' : 'rounded-bl-md border border-slate-200/80 bg-white text-slate-700'}`}>
           {message.content}
         </div>
-        {!isCustomer && message.response && (
+        {!isCustomer && message.response?.investigation && (
           <div className="w-full">
             <div className="mt-3 flex items-center gap-2 px-1">
               <SpecialistBadge specialist={message.response.specialist} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-mint">{message.response.status === 'resolved' ? 'Resolved' : 'Human support needed'}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-mint">{message.response.escalated ? `Support case ${message.response.ticketId}` : message.response.status === 'resolved' ? 'Resolved' : 'In progress'}</span>
             </div>
-            <InvestigationCard investigation={message.response.investigation} />
+            <InvestigationCard investigation={message.response.investigation} ticketId={message.response.ticketId} />
           </div>
         )}
         <div className="mt-1 px-1 text-[10px] text-slate-300">{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>

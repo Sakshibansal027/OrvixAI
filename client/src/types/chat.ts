@@ -16,8 +16,10 @@ export interface ChatResponse {
   message: string;
   specialist: Specialist;
   status: 'open' | 'resolved' | 'needs_human';
-  investigation: Investigation;
+  investigation?: Investigation;
   escalated: boolean;
+  interactionType?: 'conversational';
+  ticketId?: string;
 }
 
 export interface ChatMessage {

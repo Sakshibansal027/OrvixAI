@@ -17,9 +17,15 @@ export async function getCustomerOrders(customerId: string) {
   return Order.find({ customerId }).sort({ createdAt: -1 }).lean();
 }
 
-export async function getRelevantOrder(customerId: string, issue: 'payment' | 'delivery') {
-  const status = issue === 'payment' ? 'cancelled' : 'delivered';
-  return Order.findOne({ customerId, status }).sort({ createdAt: -1 }).lean();
+export async function getRelevantOrder(customerId: string, issue: 'payment' | 'delivery', message = '') {
+  if (issue === 'payment') {
+    return Order.findOne({ customerId, status: 'cancelled' }).sort({ createdAt: -1 }).lean();
+  }
+
+  const reportsDeliveredButMissing = /marked delivered|says delivered|delivered but|not received|cannot find|can't find|missing parcel/i.test(message);
+  const preferredStatus = reportsDeliveredButMissing ? 'delivered' : { $in: ['processing', 'shipped'] };
+  const preferredOrder = await Order.findOne({ customerId, status: preferredStatus }).sort({ createdAt: -1 }).lean();
+  return preferredOrder ?? Order.findOne({ customerId }).sort({ createdAt: -1 }).lean();
 }
 
 export async function getPayment(paymentId?: string, orderId?: string) {

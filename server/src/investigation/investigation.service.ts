@@ -70,24 +70,75 @@ export function investigateIssue(message: string, routing: RoutingDecision, data
       return {
         issue: message,
         specialist: routing.specialist,
-        findings: ['No delivered order record was found for this customer.'],
+        findings: ['No order record could be matched to this customer.'],
         rootCause: null,
-        resolution: null,
-        requiresHuman: true,
-        escalationReason: 'A delivered order record was not available for investigation, so support must verify the order manually.',
+        resolution: 'Please share the order ID so I can check its latest status.',
+        requiresHuman: false,
+        dataChecked
+      };
+    }
+
+    if (data.order.status === 'cancelled') {
+      const findings = [`Order ${data.order.orderId} is cancelled.`];
+      if (data.payment) findings.push(`Payment ${data.payment.paymentId} is ${data.payment.status}.`);
+      if (data.refund) findings.push(`Refund ${data.refund.refundId} is ${data.refund.status}.`);
+      dataChecked.push('payment transaction', 'refund record', 'refund policy');
+      const refundStarted = data.refund?.status === 'initiated' || data.refund?.status === 'processing';
+
+      return {
+        issue: 'Order not delivered',
+        specialist: routing.specialist,
+        findings,
+        rootCause: data.order.cancellationReason?.toLowerCase().includes('inventory allocation failed')
+          ? 'The item could not be reserved because inventory allocation failed after payment authorization.'
+          : data.order.cancellationReason
+          ? `The order was cancelled because ${data.order.cancellationReason.toLowerCase()}.`
+          : 'The order was cancelled before delivery.',
+        resolution: refundStarted
+          ? `The refund of ${data.refund.amount} ${data.refund.currency} is ${data.refund.status}. The payment provider may take 5-7 business days to post it.`
+          : 'This order will not be delivered because it was cancelled. I could not verify a refund record, so please share the payment details if you were charged.',
+        requiresHuman: false,
+        dataChecked
+      };
+    }
+
+    if (data.order.status === 'shipped' || data.order.status === 'processing') {
+      const statusText = data.order.status === 'shipped' ? 'on its way' : 'being prepared';
+      return {
+        issue: 'Order delivery status',
+        specialist: routing.specialist,
+        findings: [`Order ${data.order.orderId} is ${data.order.status}.`, ...(data.order.trackingNumber ? [`Tracking reference ${data.order.trackingNumber}.`] : [])],
+        rootCause: `The latest order is ${statusText} and is not marked as delivered.`,
+        resolution: data.order.trackingNumber
+          ? `You can track it with reference ${data.order.trackingNumber}. There is no delivery estimate in the order record yet.`
+          : 'It is still being prepared, so a tracking reference is not available yet.',
+        requiresHuman: false,
         dataChecked
       };
     }
 
     if (data.order.status === 'delivered') {
+      const confirmsChecks = /already checked|checked (the )?(delivery|reception|front desk)|still missing|still cannot find|still can't find|could not find it|couldn't find it/i.test(message);
+      if (confirmsChecks) {
+        return {
+          issue: 'Order marked delivered but not received after location check',
+          specialist: routing.specialist,
+          findings: [`Order ${data.order.orderId} is marked delivered.`, `The customer has checked the suggested delivery locations.`, `Tracking reference ${data.order.trackingNumber ?? 'is unavailable'}.`],
+          rootCause: 'The carrier record shows delivery, but the customer still cannot locate the parcel after checking nearby delivery locations.',
+          resolution: null,
+          requiresHuman: true,
+          escalationReason: 'A carrier investigation is now required for the missing parcel.',
+          dataChecked
+        };
+      }
+
       return {
         issue: 'Order marked delivered but not received',
         specialist: routing.specialist,
         findings: [`Order ${data.order.orderId} is marked delivered.`, `Tracking reference ${data.order.trackingNumber ?? 'is unavailable'}.`],
         rootCause: 'The carrier record shows delivery, but the customer reports non-receipt.',
-        resolution: 'Please check the delivery location and nearby household or building reception areas. A carrier investigation is required if the parcel remains missing.',
-        requiresHuman: true,
-        escalationReason: 'Carrier investigation is required for a delivered-but-not-received order.',
+        resolution: 'Please check the delivery location, reception desk, and with nearby household members. If it is still missing, reply here and I can prepare a carrier investigation for support.',
+        requiresHuman: false,
         dataChecked
       };
     }

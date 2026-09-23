@@ -5,7 +5,7 @@ function CheckIcon() {
   return <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-mint/10 text-[10px] font-black text-mint">✓</span>;
 }
 
-export function InvestigationCard({ investigation }: { investigation: Investigation }) {
+export function InvestigationCard({ investigation, ticketId }: { investigation: Investigation; ticketId?: string }) {
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
@@ -44,7 +44,7 @@ export function InvestigationCard({ investigation }: { investigation: Investigat
 
       {investigation.requiresHuman && (
         <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
-          Your issue needs human assistance. I’ve already shared the investigation and conversation context with our support team, so you won’t need to repeat everything.
+          A support case has been opened with the investigation and conversation context, so you won’t need to repeat everything.{ticketId ? ` Reference: ${ticketId}.` : ''}
         </div>
       )}
     </div>

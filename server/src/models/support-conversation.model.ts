@@ -23,6 +23,7 @@ const supportConversationSchema = new Schema({
   messages: { type: [messageSchema], default: [] },
   specialist: { type: String, enum: ['billing', 'order_delivery', 'account', 'technical'] },
   currentIssue: String,
+  ticketId: String,
   investigation: investigationSchema,
   status: { type: String, enum: ['open', 'resolved', 'needs_human'], required: true, default: 'open' }
 }, { timestamps: true });
