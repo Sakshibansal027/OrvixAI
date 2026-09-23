@@ -3,7 +3,7 @@ import { ChatInput } from '../components/ChatInput';
 import { LoadingState } from '../components/LoadingState';
 import { MessageBubble } from '../components/MessageBubble';
 import { OrvixMark } from '../components/OrvixMark';
-import { sendChatMessage } from '../services/chatService';
+import { getConversationHistory, sendChatMessage } from '../services/chatService';
 import type { ChatMessage, ChatResponse, DemoCustomer } from '../types/chat';
 
 const customers: DemoCustomer[] = [
@@ -19,11 +19,12 @@ const welcomeMessage = (customer: DemoCustomer): ChatMessage => ({
   createdAt: new Date().toISOString()
 });
 
-export function ChatPage() {
+export function ChatPage({ onOpenSupport }: { onOpenSupport: () => void }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0].id);
   const [sessions, setSessions] = useState<Record<string, ChatMessage[]>>(() => ({ [customers[0].id]: [welcomeMessage(customers[0])] }));
   const [conversationIds, setConversationIds] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [loadingLabel, setLoadingLabel] = useState('Understanding your issue...');
   const [error, setError] = useState<string | null>(null);
 
@@ -31,10 +32,32 @@ export function ChatPage() {
   const messages = sessions[selectedCustomerId] ?? [welcomeMessage(selectedCustomer)];
 
   useEffect(() => {
-    if (!sessions[selectedCustomerId]) {
-      setSessions((current) => ({ ...current, [selectedCustomerId]: [welcomeMessage(selectedCustomer)] }));
-    }
-  }, [selectedCustomer, selectedCustomerId, sessions]);
+    const controller = new AbortController();
+    setIsHistoryLoading(true);
+    getConversationHistory(selectedCustomerId, controller.signal)
+      .then((history) => {
+        if (controller.signal.aborted) return;
+        const restoredMessages: ChatMessage[] = history.messages.map((message, index) => ({
+          id: `history-${selectedCustomerId}-${index}`,
+          role: message.role === 'assistant' ? 'orvix' : 'customer',
+          content: message.content,
+          createdAt: message.createdAt
+        }));
+        setSessions((current) => ({ ...current, [selectedCustomerId]: restoredMessages.length ? restoredMessages : [welcomeMessage(selectedCustomer)] }));
+        if (history.conversationId) {
+          setConversationIds((current) => ({ ...current, [selectedCustomerId]: history.conversationId! }));
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setSessions((current) => current[selectedCustomerId] ? current : { ...current, [selectedCustomerId]: [welcomeMessage(selectedCustomer)] });
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsHistoryLoading(false);
+      });
+    return () => controller.abort();
+  }, [selectedCustomer, selectedCustomerId]);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -60,8 +83,8 @@ export function ChatPage() {
       const orvixMessage: ChatMessage = { id: crypto.randomUUID(), role: 'orvix', content: response.message, createdAt: new Date().toISOString(), response };
       setConversationIds((current) => ({ ...current, [selectedCustomerId]: response.conversationId }));
       setSessions((current) => ({ ...current, [selectedCustomerId]: [...(current[selectedCustomerId] ?? []), orvixMessage] }));
-    } catch {
-      setError('ORVIX is temporarily unable to connect to support services. Please try again.');
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'ORVIX is temporarily unable to connect to support services. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -97,16 +120,17 @@ export function ChatPage() {
               </div>
               <div><h1 className="text-sm font-extrabold text-ink sm:text-base">ORVIX Support Intelligence</h1><div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-mint" />Online and ready to investigate</div></div>
             </div>
-            <div className="hidden text-right sm:block"><div className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">Active customer</div><div className="mt-1 text-xs font-bold text-ink">{selectedCustomer.id}</div></div>
+            <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><div className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400">Active customer</div><div className="mt-1 text-xs font-bold text-ink">{selectedCustomer.id}</div></div><button onClick={onOpenSupport} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-ink transition hover:border-signal/30 hover:text-signal sm:px-4 sm:text-sm">Agent inbox</button></div>
           </header>
 
           <div className="flex-1 space-y-6 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8">
             {messages.map((message) => <MessageBubble message={message} key={message.id} />)}
+            {isHistoryLoading && <LoadingState label="Loading conversation..." />}
             {isLoading && <LoadingState label={loadingLabel} />}
             {error && <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-700">{error}</div>}
             {conversationIds[selectedCustomerId] && <div className="text-center text-[10px] font-medium text-slate-300">Conversation {conversationIds[selectedCustomerId]}</div>}
           </div>
-          <ChatInput disabled={isLoading} onSend={handleSend} />
+          <ChatInput disabled={isLoading || isHistoryLoading} onSend={handleSend} />
         </section>
       </div>
     </main>

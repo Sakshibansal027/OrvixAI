@@ -9,25 +9,28 @@ export interface RoutingDecision {
 
 const hasAny = (text: string, terms: string[]) => terms.some((term) => text.includes(term));
 
+const issueTerms = {
+  billing: ['payment', 'paid', 'deducted', 'charged', 'transaction', 'refund', 'paisa kata', 'paise kate', 'amount debited', 'money deducted'],
+  delivery: ['order', 'delivery', 'delivered', 'shipment', 'shipping', 'received', 'cancelled', 'canceled', 'not arrived', 'parcel', 'tracking', 'nahi aaya', 'nhi aaya', 'nahi mila', 'nhi mila', 'deliver nahi', 'deliver nhi'],
+  account: ['account', 'login', 'log in', 'logged in', 'access', 'password', 'sign in', 'signin', 'otp', 'locked', 'login nahi'],
+  technical: ['app', 'application', 'crash', 'bug', 'error', 'website', 'not working', 'open nahi ho', 'app nahi chal']
+};
+
 export function routeToSpecialist(context: ChatContext): RoutingDecision {
   const currentText = context.message.toLowerCase();
-  const historyText = context.recentMessages?.map((message) => message.content).join(' ').toLowerCase() ?? '';
+  const historyText = context.recentMessages?.filter((message) => message.role === 'customer').slice(-4).map((message) => message.content).join(' ').toLowerCase() ?? '';
 
-  const currentHasCategory = hasAny(currentText, [
-    'payment', 'paid', 'deducted', 'charged', 'transaction', 'refund',
-    'order', 'delivery', 'delivered', 'shipment', 'shipping', 'received', 'cancelled', 'canceled',
-    'account', 'login', 'log in', 'logged in', 'access', 'password', 'sign in',
-    'app', 'application', 'crash', 'bug', 'error', 'website', 'not working'
-  ]);
+  const allIssueTerms = [...issueTerms.billing, ...issueTerms.delivery, ...issueTerms.account, ...issueTerms.technical];
+  const currentHasCategory = hasAny(currentText, allIssueTerms);
   const currentWordCount = currentText.split(/\s+/).filter(Boolean).length;
-  const contextualQuestion = hasAny(currentText, ['why was', 'why did', 'what caused', 'when will', 'how long', 'can you explain']);
+  const contextualQuestion = hasAny(currentText, ['why', 'what caused', 'when will', 'how long', 'can you explain', 'kyu', 'kyon', 'kaise', 'kab']);
   const likelyFollowUp = Boolean(historyText) && (contextualQuestion || (!currentHasCategory && currentWordCount <= 8 && hasAny(currentText, ['it', 'that', 'this', 'when', 'what', 'why', 'how', 'still', 'again'])));
   const text = likelyFollowUp ? `${historyText} ${currentText}` : currentText;
 
-  const paymentIssue = hasAny(text, ['payment', 'paid', 'deducted', 'charged', 'transaction', 'refund']);
-  const deliveryIssue = hasAny(text, ['order', 'delivery', 'delivered', 'shipment', 'shipping', 'received', 'cancelled', 'canceled']);
-  const accountIssue = hasAny(text, ['account', 'login', 'log in', 'logged in', 'access', 'password', 'sign in']);
-  const technicalIssue = hasAny(text, ['app', 'application', 'crash', 'bug', 'error', 'website', 'not working']);
+  const paymentIssue = hasAny(text, issueTerms.billing);
+  const deliveryIssue = hasAny(text, issueTerms.delivery);
+  const accountIssue = hasAny(text, issueTerms.account);
+  const technicalIssue = hasAny(text, issueTerms.technical);
 
   if (paymentIssue) {
     return {

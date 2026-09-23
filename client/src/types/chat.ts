@@ -35,3 +35,15 @@ export interface DemoCustomer {
   name: string;
   detail: string;
 }
+
+export interface SupportTicket {
+  _id: string;
+  ticketId: string;
+  customerId: string;
+  customerName: string;
+  subject: string;
+  status: 'open' | 'resolved' | 'closed';
+  messages: Array<{ role: string; content: string; createdAt: string }>;
+  investigation?: Investigation;
+  createdAt: string;
+}

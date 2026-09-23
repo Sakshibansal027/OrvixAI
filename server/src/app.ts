@@ -2,6 +2,8 @@ import cors from 'cors';
 import express from 'express';
 import { businessDataRouter } from './routes/business-data.routes.js';
 import { chatRouter } from './routes/chat.routes.js';
+import { supportRouter } from './routes/support.routes.js';
+import { isDatabaseConnected } from './db/mongoose.js';
 
 export const app = express();
 
@@ -18,10 +20,24 @@ app.get('/', (_request, response) => {
 });
 
 app.get('/api/health', (_request, response) => {
-  response.json({ service: 'orvix-api', status: 'ok' });
+  const connected = isDatabaseConnected();
+  response.status(connected ? 200 : 503).json({
+    service: 'orvix-api',
+    status: connected ? 'ok' : 'degraded',
+    database: connected ? 'connected' : 'unavailable'
+  });
+});
+
+app.use('/api', (_request, response, next) => {
+  if (!isDatabaseConnected()) {
+    response.status(503).json({ error: 'Support data is temporarily unavailable. Check the MongoDB connection and try again.' });
+    return;
+  }
+  next();
 });
 
 app.use('/api/chat', chatRouter);
+app.use('/api/support', supportRouter);
 app.use('/api', businessDataRouter);
 
 app.use((_request, response) => {

@@ -18,6 +18,12 @@ export async function getCustomerOrders(customerId: string) {
 }
 
 export async function getRelevantOrder(customerId: string, issue: 'payment' | 'delivery', message = '') {
+  const mentionedOrderId = message.match(/\bORD[_-][A-Z0-9]+\b/i)?.[0].replace('-', '_');
+  if (mentionedOrderId) {
+    const mentionedOrder = await Order.findOne({ customerId, orderId: mentionedOrderId }).lean();
+    if (mentionedOrder) return mentionedOrder;
+  }
+
   if (issue === 'payment') {
     return Order.findOne({ customerId, status: 'cancelled' }).sort({ createdAt: -1 }).lean();
   }
@@ -45,10 +51,19 @@ export async function getCustomerTickets(customerId: string) {
 }
 
 export async function searchCompanyPolicy(query: string) {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const stopWords = new Set(['the', 'and', 'for', 'with', 'from', 'support', 'policy']);
+  const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length > 2 && !stopWords.has(term)))];
   const policies = await CompanyPolicy.find({ active: true }).lean();
-  return policies.filter((policy) => {
-    const haystack = `${policy.title} ${policy.keywords.join(' ')} ${policy.content}`.toLowerCase();
-    return terms.some((term) => haystack.includes(term));
-  });
+  return policies
+    .map((policy) => {
+      const title = policy.title.toLowerCase();
+      const keywords = policy.keywords.join(' ').toLowerCase();
+      const content = policy.content.toLowerCase();
+      const score = terms.reduce((total, term) => total + (title.includes(term) ? 5 : 0) + (keywords.includes(term) ? 3 : 0) + (content.includes(term) ? 1 : 0), 0);
+      return { policy, score };
+    })
+    .filter((result) => result.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 4)
+    .map(({ policy }) => policy);
 }

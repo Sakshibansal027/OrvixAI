@@ -5,6 +5,7 @@
   "description": "ORVIX autonomous customer support and root-cause engine",
   "scripts": {
     "dev": "tsx watch server/src/server.ts",
+    "dev:all": "node scripts/dev-all.mjs",
     "client:dev": "pnpm --dir client dev",
     "client:build": "pnpm --dir client build",
     "build": "tsc -p server/tsconfig.json",

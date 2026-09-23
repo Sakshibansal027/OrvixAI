@@ -3,7 +3,6 @@ import { SupportConversation } from '../models/support-conversation.model.js';
 import { SupportTicket } from '../models/support-ticket.model.js';
 import { getCustomer, getCustomerTickets, getPayment, getRefund, getRelevantOrder, searchCompanyPolicy } from '../tools/business-data.tools.js';
 import { investigateIssue } from '../investigation/investigation.service.js';
-import { routeToSpecialist } from '../routing/specialist-router.js';
 import type { ChatContext, ConversationStatus } from '../types/support.js';
 
 function getConversationalReply(
@@ -13,12 +12,17 @@ function getConversationalReply(
   ticketId?: string
 ): string | null {
   const normalized = message.toLowerCase().trim().replace(/[.!?,]+$/g, '').replace(/\s+/g, ' ');
+  const compact = normalized.replace(/([a-z])\1{1,}/g, '$1');
 
-  if (/^(h[i]+|hello+|hey+|namaste|namaskar|good morning|good afternoon|good evening)( there)?$/.test(normalized)) {
+  if (/^(h[i]+|h?ello+|helo+|hey+|namaste|namaskar|good morning|good afternoon|good evening)( there)?$/.test(compact)) {
     return `Hi ${firstName}! How can I help you today? Tell me what happened with your payment, order, account, or app.`;
   }
 
-  if (/^(?:(?:ok(?:ay)?|all right|alright|got it|understood|cool|sure|hmm+|acha|theek hai)\s+)*(?:thanks?|thank\s*(?:you|u)|thx|ok(?:ay)?|all right|alright|got it|understood|cool|sure|hmm+|acha|theek hai|ठीक है|धन्यवाद)(?:\s+(?:a lot|very much))?$/.test(normalized)) {
+  if (/^(how are you(?: doing)?|how is it going|how's it going|what's up|kaise ho|aap kaise ho|kya haal hai|kya haal chaal hai)$/.test(compact)) {
+    return `I’m doing well, thanks for asking, ${firstName}! What can I help you with today?`;
+  }
+
+  if (/^(?:(?:ok(?:ay)?|all right|alright|got it|understood|cool|sure|hmm+|acha|theek hai)\s+)*(?:thanks?|thank\s*(?:you|u)|thx|ok(?:ay)?|all right|alright|got it|understood|cool|sure|hmm+|acha|theek hai|ठीक है|धन्यवाद)(?:\s+(?:a lot|very much))?$/.test(compact)) {
     if (conversationStatus === 'needs_human' && ticketId) {
       return `You're welcome, ${firstName}. Support case ${ticketId} is open with the conversation context for review.`;
     }
@@ -43,10 +47,10 @@ export async function processChatMessage(context: ChatContext) {
 
   const conversation = await SupportConversation.findOne({ customerId: context.customerId }).sort({ updatedAt: -1 });
   const recentMessages = conversation?.messages.slice(-10).map((message) => ({ role: message.role, content: message.content })) ?? [];
-  const routing = routeToSpecialist({ ...context, recentMessages });
   const firstName = customer.name.split(' ')[0];
   const conversationalReply = getConversationalReply(context.message, firstName, conversation?.status, conversation?.ticketId);
-  if (conversationalReply || routing.confidence === 'low') {
+  const routing = conversationalReply ? null : await aiService.classifyIntent({ ...context, recentMessages });
+  if (conversationalReply || routing?.confidence === 'low') {
     const responseMessage = conversationalReply ?? getClarificationReply(firstName);
     const now = new Date();
     const conversationDocument = conversation ?? new SupportConversation({ customerId: context.customerId, messages: [], status: 'open' });
@@ -66,15 +70,15 @@ export async function processChatMessage(context: ChatContext) {
     };
   }
 
-  const issueType = routing.specialist === 'billing' ? 'payment' : routing.specialist === 'order_delivery' ? 'delivery' : null;
+  const issueType = routing!.specialist === 'billing' ? 'payment' : routing!.specialist === 'order_delivery' ? 'delivery' : null;
   const order = issueType ? await getRelevantOrder(context.customerId, issueType, context.message) : undefined;
-  const needsOrderPaymentCheck = routing.specialist === 'billing' || order?.status === 'cancelled';
+  const needsOrderPaymentCheck = routing!.specialist === 'billing' || order?.status === 'cancelled';
   const payment = needsOrderPaymentCheck ? await getPayment(undefined, order?.orderId) : undefined;
   const refund = needsOrderPaymentCheck ? await getRefund(order?.orderId, payment?.paymentId) : undefined;
   const tickets = await getCustomerTickets(context.customerId);
-  const policyQuery = routing.specialist === 'billing' || order?.status === 'cancelled' ? 'cancelled payment refund' : routing.specialist === 'order_delivery' ? 'delivered missing delivery' : routing.specialist === 'account' ? 'account access locked' : 'technical support';
+  const policyQuery = routing!.specialist === 'billing' || order?.status === 'cancelled' ? 'cancelled payment refund' : routing!.specialist === 'order_delivery' ? 'delivered missing delivery' : routing!.specialist === 'account' ? 'account access locked' : 'technical support';
   const policies = await searchCompanyPolicy(policyQuery);
-  const investigation = investigateIssue(context.message, routing, { customer, order, payment, refund, tickets, policies });
+  const investigation = investigateIssue(context.message, routing!, { customer, order, payment, refund, tickets, policies });
   let supportTicket = investigation.requiresHuman && conversation?.status === 'needs_human' && conversation.currentIssue === investigation.issue && conversation.ticketId
     ? await SupportTicket.findOne({ ticketId: conversation.ticketId, status: 'open' })
     : null;
@@ -86,11 +90,20 @@ export async function processChatMessage(context: ChatContext) {
       customerId: context.customerId,
       subject: investigation.issue,
       status: 'open',
-      messages: []
+      messages: [],
+      investigation
     });
   }
 
-  const responseMessage = await aiService.generateResponse({ customerName: customer.name, customerMessage: context.message, investigation, ticketId: supportTicket?.ticketId });
+  if (supportTicket) supportTicket.investigation = investigation;
+  const responseMessage = await aiService.generateResponse({
+    customerName: customer.name,
+    customerMessage: context.message,
+    recentMessages,
+    investigation,
+    policyEvidence: policies.map((policy) => ({ title: policy.title, content: policy.content })),
+    ticketId: supportTicket?.ticketId
+  });
   if (supportTicket) {
     if (isNewSupportTicket && conversation) {
       supportTicket.messages.push(...conversation.messages.map((message) => ({

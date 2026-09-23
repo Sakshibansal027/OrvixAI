@@ -10,8 +10,20 @@ export async function sendChatMessage(customerId: string, message: string): Prom
   });
 
   if (!response.ok) {
-    throw new Error('Chat request failed');
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error ?? 'Chat request failed');
   }
 
   return response.json() as Promise<ChatResponse>;
+}
+
+export interface ConversationHistory {
+  conversationId: string | null;
+  messages: Array<{ role: 'customer' | 'assistant'; content: string; createdAt: string }>;
+}
+
+export async function getConversationHistory(customerId: string, signal?: AbortSignal): Promise<ConversationHistory> {
+  const response = await fetch(`${API_BASE_URL}/api/chat/${encodeURIComponent(customerId)}`, { signal });
+  if (!response.ok) throw new Error('Conversation history could not be loaded');
+  return response.json() as Promise<ConversationHistory>;
 }
