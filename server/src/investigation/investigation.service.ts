@@ -17,7 +17,7 @@ export function investigateIssue(message: string, routing: RoutingDecision, data
     dataChecked.push('order record', 'payment transaction', 'refund record', 'refund policy');
     if (!data.order || !data.payment) {
       return {
-        issue: message,
+        issue: 'Payment or order record not found',
         specialist: routing.specialist,
         findings: ['The customer was identified, but the related order or payment record was not found.'],
         rootCause: null,

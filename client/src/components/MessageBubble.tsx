@@ -15,7 +15,10 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         <div className={`mt-1.5 rounded-2xl px-4 py-3 text-sm leading-6 shadow-bubble ${isCustomer ? 'rounded-br-md bg-ink text-white' : 'rounded-bl-md border border-slate-200/80 bg-white text-slate-700'}`}>
           {message.content}
         </div>
-        {!isCustomer && message.response?.investigation && (
+        {!isCustomer && message.response?.interactionType === 'case_update' && (
+          <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs font-semibold text-signal">Added to support case {message.response.ticketId} · awaiting agent review</div>
+        )}
+        {!isCustomer && message.response?.investigation && message.response.interactionType !== 'case_update' && (
           <div className="w-full">
             <div className="mt-3 flex items-center gap-2 px-1">
               <SpecialistBadge specialist={message.response.specialist} />

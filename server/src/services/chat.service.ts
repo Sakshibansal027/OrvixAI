@@ -79,7 +79,11 @@ export async function processChatMessage(context: ChatContext) {
   const policyQuery = routing!.specialist === 'billing' || order?.status === 'cancelled' ? 'cancelled payment refund' : routing!.specialist === 'order_delivery' ? 'delivered missing delivery' : routing!.specialist === 'account' ? 'account access locked' : 'technical support';
   const policies = await searchCompanyPolicy(policyQuery);
   const investigation = investigateIssue(context.message, routing!, { customer, order, payment, refund, tickets, policies });
-  let supportTicket = investigation.requiresHuman && conversation?.status === 'needs_human' && conversation.currentIssue === investigation.issue && conversation.ticketId
+  const isMissingPaymentRecord = routing!.specialist === 'billing' && investigation.issue === 'Payment or order record not found';
+  const canReuseCase = conversation?.status === 'needs_human' && Boolean(conversation.ticketId) && (
+    conversation.currentIssue === investigation.issue || (isMissingPaymentRecord && conversation.specialist === 'billing')
+  );
+  let supportTicket = investigation.requiresHuman && canReuseCase && conversation?.ticketId
     ? await SupportTicket.findOne({ ticketId: conversation.ticketId, status: 'open' })
     : null;
   let isNewSupportTicket = false;
@@ -103,7 +107,8 @@ export async function processChatMessage(context: ChatContext) {
     recentMessages,
     investigation,
     policyEvidence: policies.map((policy) => ({ title: policy.title, content: policy.content })),
-    ticketId: supportTicket?.ticketId
+    ticketId: supportTicket?.ticketId,
+    ticketIsNew: isNewSupportTicket
   });
   if (supportTicket) {
     if (isNewSupportTicket && conversation) {
@@ -141,6 +146,7 @@ export async function processChatMessage(context: ChatContext) {
     status,
     investigation,
     escalated: Boolean(supportTicket),
-    ...(supportTicket ? { ticketId: supportTicket.ticketId } : {})
+    ...(supportTicket ? { ticketId: supportTicket.ticketId } : {}),
+    ...(supportTicket && !isNewSupportTicket ? { interactionType: 'case_update' as const } : {})
   };
 }

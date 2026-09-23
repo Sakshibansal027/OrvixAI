@@ -18,7 +18,7 @@ export interface ChatResponse {
   status: 'open' | 'resolved' | 'needs_human';
   investigation?: Investigation;
   escalated: boolean;
-  interactionType?: 'conversational';
+  interactionType?: 'conversational' | 'case_update';
   ticketId?: string;
 }
 
