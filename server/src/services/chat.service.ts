@@ -91,7 +91,8 @@ export async function processChatMessage(context: ChatContext) {
       subject: investigation.issue,
       status: 'open',
       messages: [],
-      investigation
+      investigation,
+      createdAt: new Date()
     });
   }
 
